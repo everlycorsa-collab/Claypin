@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>Claypin — Первый день</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="game" width="812" height="375"></canvas>
+
+    <div id="hud">
+      <div id="roomLabel">Коридор</div>
+      <div id="hintText"></div>
+    </div>
+
+    <div id="dialogue" class="hidden">
+      <div id="dialogueBox">
+        <div id="dialogueText"></div>
+        <div id="dialogueChoices"></div>
+      </div>
+    </div>
+
+    <div id="panelPuzzle" class="overlayPanel hidden">
+      <div class="panelBox">
+        <div class="panelTitle">Щиток питания</div>
+        <div class="panelSub">Нужный порядок (см. подсказку у двери):</div>
+        <div class="hintRow" id="puzzleHintRow"></div>
+        <div class="panelSub">Перетащи штекеры, чтобы совпало:</div>
+        <div class="socketsRow" id="puzzleSockets"></div>
+        <div class="panelMsg" id="puzzleMsg"></div>
+        <button class="choiceBtn" id="puzzleCloseBtn">Назад</button>
+      </div>
+    </div>
+
+    <div id="windowView" class="overlayPanel hidden">
+      <div class="teaserFrame">
+        <div class="teaserSky">
+          <div class="teaserBuilding b1"></div>
+          <div class="teaserBuilding b2"></div>
+          <div class="teaserBuilding b3"></div>
+          <div class="teaserBuilding b4"></div>
+        </div>
+        <div class="teaserCaption">Соседнее крыло. Похоже, туда я ещё не заходил...</div>
+      </div>
+      <button class="choiceBtn teaserBack" id="windowBackBtn">Назад</button>
+    </div>
+
+    <div id="panelNetwork" class="overlayPanel hidden">
+      <div class="panelBox">
+        <div class="panelTitle">NETWORK STATUS: OFFLINE</div>
+        <div class="panelSub">Диагностика поймала порядок фаз перед сбоем:</div>
+        <div class="hintRow" id="networkHintRow"></div>
+        <div class="panelSub">Это и есть порядок для щитка в серверной.</div>
+        <button class="choiceBtn" id="networkCloseBtn">Назад</button>
+      </div>
+    </div>
+
+    <div id="panelTerminal" class="overlayPanel hidden">
+      <div class="terminalBox">
+        <div class="terminalScreen" id="terminalScreen"></div>
+        <button class="choiceBtn" id="terminalCloseBtn">Закрыть</button>
+      </div>
+    </div>
+
+    <div id="controls">
+      <span id="controlsHint">Тапни по полу — идти · Тапни по предмету — взаимодействие</span>
+      <button id="debugToggleBtn">🐞</button>
+    </div>
+    <div id="debugReadout" class="hidden"></div>
+
+    <div id="fade"></div>
+  </div>
+
+  <script src="lib/three.min.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
