@@ -350,6 +350,7 @@ terminalInputEl.addEventListener('keydown', (e) => {
   if (!terminalInputEl.value.trim()) return;
   runTerminalCommand(terminalInputEl.value);
   terminalInputEl.value = '';
+  terminalInputEl.blur(); // прячем виртуальную клавиатуру на телефоне, чтобы был виден ответ
 });
 
 function openTerminalPanel() {
