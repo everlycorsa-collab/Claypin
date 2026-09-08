@@ -13,6 +13,7 @@ html, body {
   justify-content: center;
   font-family: "Segoe UI", system-ui, sans-serif;
   overflow: hidden;
+  touch-action: none; /* страховка на случай, если браузер игнорирует user-scalable=no из viewport */
 }
 
 /* Заполняем высоту экрана целиком (требование: высота фона = 100% высоты экрана),
