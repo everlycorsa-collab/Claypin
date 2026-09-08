@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Claypin — Первый день</title>
+<title>Claypin — Day One</title>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -10,8 +10,12 @@
     <canvas id="game" width="812" height="375"></canvas>
 
     <div id="hud">
-      <div id="roomLabel">Коридор</div>
+      <div id="roomLabel">Corridor</div>
       <div id="hintText"></div>
+    </div>
+
+    <div id="inventory" class="hidden">
+      <button id="clayItemBtn" title="Clay lump — tap to aim, tap again to put it away"></button>
     </div>
 
     <div id="dialogue" class="hidden">
@@ -23,53 +27,50 @@
 
     <div id="panelPuzzle" class="overlayPanel hidden">
       <div class="panelBox">
-        <div class="panelTitle">Щиток питания</div>
-        <div class="panelSub">Нужный порядок (см. подсказку у двери):</div>
+        <div class="panelTitle">Fusebox</div>
+        <div class="panelSub">Required order (see the hint by the door):</div>
         <div class="hintRow" id="puzzleHintRow"></div>
-        <div class="panelSub">Перетащи штекеры, чтобы совпало:</div>
-        <div class="socketsRow" id="puzzleSockets"></div>
-        <div class="panelMsg" id="puzzleMsg"></div>
-        <button class="choiceBtn" id="puzzleCloseBtn">Назад</button>
-      </div>
-    </div>
-
-    <div id="windowView" class="overlayPanel hidden">
-      <div class="teaserFrame">
-        <div class="teaserSky">
-          <div class="teaserBuilding b1"></div>
-          <div class="teaserBuilding b2"></div>
-          <div class="teaserBuilding b3"></div>
-          <div class="teaserBuilding b4"></div>
+        <div class="panelSub">Plug the cables into the sockets below — anywhere, the order checks itself:</div>
+        <div class="wireBoard" id="wireBoard">
+          <div class="wireSourcesRow" id="wireSources"></div>
+          <svg class="wireSvg" id="wireSvg"></svg>
+          <div class="socketsRow" id="puzzleSockets"></div>
+          <div class="wirePlugsLayer" id="wirePlugs"></div>
         </div>
-        <div class="teaserCaption">Соседнее крыло. Похоже, туда я ещё не заходил...</div>
+        <div class="panelMsg" id="puzzleMsg"></div>
+        <button class="choiceBtn" id="puzzleCloseBtn">Back</button>
       </div>
-      <button class="choiceBtn teaserBack" id="windowBackBtn">Назад</button>
     </div>
 
     <div id="panelNetwork" class="overlayPanel hidden">
       <div class="panelBox">
         <div class="panelTitle">NETWORK STATUS: OFFLINE</div>
-        <div class="panelSub">Диагностика поймала порядок фаз перед сбоем:</div>
+        <div class="panelSub">Diagnostics caught the phase order before the failure:</div>
         <div class="hintRow" id="networkHintRow"></div>
-        <div class="panelSub">Это и есть порядок для щитка в серверной.</div>
-        <button class="choiceBtn" id="networkCloseBtn">Назад</button>
+        <div class="panelSub">That's the order for the fusebox in the server room.</div>
+        <button class="choiceBtn" id="networkCloseBtn">Back</button>
       </div>
     </div>
 
     <div id="panelTerminal" class="overlayPanel hidden">
       <div class="terminalBox">
-        <div class="terminalScreen" id="terminalScreen"></div>
-        <button class="choiceBtn" id="terminalCloseBtn">Закрыть</button>
+        <div class="terminalScreen" id="terminalScreen"><span id="terminalText"></span><span class="cursor"></span></div>
+        <div class="terminalInputRow">
+          <span class="terminalPrompt">&gt;</span>
+          <input type="text" id="terminalInput" class="terminalInput" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="type a command... (help)" />
+        </div>
+        <button class="choiceBtn" id="terminalCloseBtn">Close</button>
       </div>
     </div>
 
     <div id="controls">
-      <span id="controlsHint">Тапни по полу — идти · Тапни по предмету — взаимодействие</span>
+      <span id="controlsHint">Tap the floor to walk · Tap an object to interact</span>
       <button id="debugToggleBtn">🐞</button>
     </div>
     <div id="debugReadout" class="hidden"></div>
 
     <div id="fade"></div>
+    <div id="alarmOverlay" class="hidden">🚨 FIRE ALARM 🚨</div>
   </div>
 
   <script src="lib/three.min.js"></script>

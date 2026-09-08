@@ -13,12 +13,13 @@ const fadeEl = document.getElementById('fade');
 
 const puzzlePanelEl = document.getElementById('panelPuzzle');
 const puzzleHintRowEl = document.getElementById('puzzleHintRow');
+const wireBoardEl = document.getElementById('wireBoard');
+const wireSourcesEl = document.getElementById('wireSources');
+const wireSvgEl = document.getElementById('wireSvg');
 const puzzleSocketsEl = document.getElementById('puzzleSockets');
+const wirePlugsEl = document.getElementById('wirePlugs');
 const puzzleMsgEl = document.getElementById('puzzleMsg');
 const puzzleCloseBtn = document.getElementById('puzzleCloseBtn');
-
-const windowViewEl = document.getElementById('windowView');
-const windowBackBtn = document.getElementById('windowBackBtn');
 
 const networkPanelEl = document.getElementById('panelNetwork');
 const networkHintRowEl = document.getElementById('networkHintRow');
@@ -26,33 +27,16 @@ const networkCloseBtn = document.getElementById('networkCloseBtn');
 
 const terminalPanelEl = document.getElementById('panelTerminal');
 const terminalScreenEl = document.getElementById('terminalScreen');
+const terminalTextEl = document.getElementById('terminalText');
+const terminalInputEl = document.getElementById('terminalInput');
 const terminalCloseBtn = document.getElementById('terminalCloseBtn');
+const alarmOverlayEl = document.getElementById('alarmOverlay');
 
 const debugToggleBtn = document.getElementById('debugToggleBtn');
 const debugReadoutEl = document.getElementById('debugReadout');
 
-// ---------- Процедурные текстуры (bump-карты для настоящего 3D-света) ----------
-function makeNoiseTile(size, baseGray, speckDensity, speckSize, elongation) {
-  const c = document.createElement('canvas');
-  c.width = size; c.height = size;
-  const nctx = c.getContext('2d');
-  nctx.fillStyle = `rgb(${baseGray},${baseGray},${baseGray})`;
-  nctx.fillRect(0, 0, size, size);
-  const count = Math.round(size * size * speckDensity);
-  for (let i = 0; i < count; i++) {
-    const x = Math.random() * size, y = Math.random() * size;
-    const r = speckSize * (0.5 + Math.random());
-    const dark = Math.random() < 0.55;
-    const shade = Math.max(0, Math.min(255, baseGray + (dark ? -1 : 1) * (10 + Math.random() * 35)));
-    nctx.globalAlpha = 0.08 + Math.random() * 0.16;
-    nctx.fillStyle = `rgb(${shade},${shade},${shade})`;
-    nctx.beginPath();
-    nctx.ellipse(x, y, r, r * elongation, Math.random() * Math.PI, 0, Math.PI * 2);
-    nctx.fill();
-  }
-  nctx.globalAlpha = 1;
-  return c;
-}
+const inventoryEl = document.getElementById('inventory');
+const clayItemBtn = document.getElementById('clayItemBtn');
 
 function toTexture(canvasEl, repeatX, repeatY) {
   const tex = new THREE.CanvasTexture(canvasEl);
@@ -62,10 +46,6 @@ function toTexture(canvasEl, repeatX, repeatY) {
   }
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
-}
-
-function clayMaterial(color) {
-  return new THREE.MeshLambertMaterial({ color });
 }
 
 function lerp(a, b, t) { return a + (b - a) * t; }
@@ -83,10 +63,7 @@ function shuffleArray(arr) {
   }
   return a;
 }
-function rotateArray(arr, n) { return arr.map((_, i) => arr[(i + n) % arr.length]); }
-
 const targetOrder = shuffleArray(COLOR_KEYS);
-let currentOrder = rotateArray(targetOrder, 1 + Math.floor(Math.random() * 3)); // никогда не совпадает изначально
 
 // ---------- Лобби (реальный фон-арт) ----------
 // Разрывы и прямоугольники ниже — оценка на глаз по картинке 3576x1184.
@@ -99,26 +76,24 @@ const WALK_LINE_Y = 1080;
 const WALK_X_MIN = 90, WALK_X_MAX = 3500;
 
 const LOBBY_HOTSPOTS = {
-  networkBoard: { kind: 'networkBoard', rect: [60, 270, 650, 790], standX: 360, standY: WALK_LINE_Y, label: 'Экран статуса сети' },
-  door: { kind: 'door', rect: [1450, 300, 1850, 1030], standX: 1650, standY: WALK_LINE_Y, label: 'Дверь' },
-  archway: { kind: 'archway', rect: [2200, 300, 2620, 1030], standX: 2410, standY: WALK_LINE_Y, label: 'Сервисный тоннель' },
-  terminal: { kind: 'terminal', rect: [2990, 630, 3280, 1045], standX: 3135, standY: WALK_LINE_Y, label: 'Терминал' },
+  networkBoard: { kind: 'networkBoard', rect: [60, 270, 650, 790], standX: 360, standY: WALK_LINE_Y, label: 'Network Status Screen' },
+  door: { kind: 'door', rect: [1450, 300, 1850, 1030], standX: 1650, standY: WALK_LINE_Y, label: 'Door' },
+  cactus: { kind: 'cactus', rect: [2010, 700, 2200, 1030], standX: 2105, standY: WALK_LINE_Y, label: 'Cactus' },
+  archway: { kind: 'archway', rect: [2200, 300, 2620, 1030], standX: 2410, standY: WALK_LINE_Y, label: 'Service Tunnel' },
+  terminal: { kind: 'terminal', rect: [2990, 630, 3280, 1045], standX: 3135, standY: WALK_LINE_Y, label: 'Terminal' },
 };
 
-// ---------- Комнаты ----------
-const ROOM_BOUNDS = {
-  server: { w: 260, d: 260 },
-};
-
-const serverProps = {
-  hatchBack: { x: 40, z: 30, w: 42, d: 24, h: 48 },
-  fusebox: { x: 140, z: 30, w: 52, d: 18, h: 88 },
-  window: { x: 230, z: 25, w: 95, d: 6, h: 115 },
+// ---------- Серверная (тот же формат фона 3576x1184, что и в лобби) ----------
+// Тот же принцип: фикс. линия пола, тап где угодно — идём по X, камера едет за игроком.
+const SERVER_HOTSPOTS = {
+  networkBoard: { kind: 'networkBoard', rect: [70, 285, 645, 780], standX: 358, standY: WALK_LINE_Y, label: 'Network Status Screen' },
+  fusebox: { kind: 'fusebox', rect: [1450, 155, 1915, 1040], standX: 1683, standY: WALK_LINE_Y, label: 'Fusebox' },
+  hatchBack: { kind: 'hatchBack', rect: [2325, 605, 2595, 1040], standX: 2460, standY: WALK_LINE_Y, label: 'Back to Lobby' },
+  terminal: { kind: 'terminal', rect: [3040, 650, 3450, 935], standX: 3245, standY: WALK_LINE_Y, label: 'Terminal' },
 };
 
 let currentRoom = 'lobby';
 let powered = false;
-let powerProgress = 0;
 
 // ---------- Игрок ----------
 // в лобби player.z хранит "глубину" в пиксельных координатах фона (по нему же считаем масштаб)
@@ -129,15 +104,22 @@ let walkLabel = '';
 
 let dialogueOpen = false;
 let puzzleOpen = false;
-let windowViewOpen = false;
 let networkOpen = false;
 let terminalOpen = false;
 let debugMode = false;
 const transitionState = { active: false, phase: null, t: 0, targetRoom: null };
 const FADE_T = 0.25;
 
+// ---------- Комок глины: подобрать за кактусом -> прицелиться -> кинуть в стену ----------
+let clayTaken = false;  // уже нашли (кактус больше не даёт второй кусок)
+let hasClay = false;    // сейчас при себе — можно прицелиться и бросить
+let aimMode = false;    // режим прицеливания активен (переключается иконкой в HUD)
+let aimDragging = false;   // сейчас реально тянем прицел по экрану
+let aimTarget = null;      // {x,y} в мировых координатах — текущая точка прицеливания
+let clayThrow = null;      // {fromX,fromY,toX,toY,t,duration} — летящий комок
+
 function uiBlocked() {
-  return dialogueOpen || puzzleOpen || windowViewOpen || networkOpen || terminalOpen || transitionState.active;
+  return dialogueOpen || puzzleOpen || networkOpen || terminalOpen || transitionState.active || aimMode;
 }
 
 // ---------- Диалог у двери ----------
@@ -148,7 +130,7 @@ function openDoorHint() {
   dialogueChoicesEl.innerHTML = '';
   const btn = document.createElement('button');
   btn.className = 'choiceBtn';
-  btn.textContent = 'Понятно';
+  btn.textContent = 'Got it';
   btn.onclick = closeDialogue;
   dialogueChoicesEl.appendChild(btn);
 }
@@ -161,11 +143,11 @@ function closeDialogue() {
 function finishLevel() {
   dialogueOpen = true;
   dialogueEl.classList.remove('hidden');
-  dialogueTextEl.textContent = 'Уровень пройден!\nПитание восстановлено, дверь открыта.';
+  dialogueTextEl.textContent = 'Level complete!\nPower restored, the door is open.';
   dialogueChoicesEl.innerHTML = '';
   const btn = document.createElement('button');
   btn.className = 'choiceBtn';
-  btn.textContent = 'Заново';
+  btn.textContent = 'Restart';
   btn.onclick = () => window.location.reload();
   dialogueChoicesEl.appendChild(btn);
 }
@@ -182,20 +164,201 @@ function closeNetworkPanel() {
 }
 networkCloseBtn.onclick = closeNetworkPanel;
 
-// ---------- Терминал ----------
+// ---------- Терминал: настоящая командная строка с парой классических приколов ----------
 const TERMINAL_LINES = [
-  '&gt; BOOT SEQUENCE...',
-  '&gt; MAIN GRID: OFFLINE',
-  '&gt; BACKUP GRID: OFFLINE',
-  '&gt; LAST EVENT: PHASE SYNC FAILURE',
-  '&gt; ACTION REQUIRED: restore fusebox',
-  '&nbsp;&nbsp;&nbsp;phase order — see SERVICE PANEL, server room',
-  '&gt; STATUS: awaiting technician...',
+  '> BOOT SEQUENCE...',
+  '> MAIN GRID: OFFLINE',
+  '> BACKUP GRID: OFFLINE',
+  '> LAST EVENT: PHASE SYNC FAILURE',
+  '> ACTION REQUIRED: restore fusebox',
+  '   phase order — see SERVICE PANEL, server room',
+  '> STATUS: awaiting technician...',
 ];
+
+let terminalLog = []; // уже полностью "напечатанные" строки — постоянная история
+let terminalTyping = false;
+let typingQueue = [];       // строки, которые ещё предстоит допечатать
+let typingCurrentLine = ''; // то, что уже видно из текущей печатающейся строки
+let typingTimer = null;
+
+// Печатаем по символу, как настоящий CMD/терминал — вместо мгновенного появления текста целиком.
+const TYPE_MS_PER_CHAR = 9;
+const TYPE_MS_JITTER = 10;
+const TYPE_LINE_PAUSE_MS = 70;
+
+function renderTerminalScreen() {
+  const shown = terminalTyping ? terminalLog.concat(typingCurrentLine) : terminalLog;
+  terminalTextEl.textContent = shown.join('\n');
+  terminalScreenEl.scrollTop = terminalScreenEl.scrollHeight;
+}
+
+// Печатает переданные строки по одному символу; уже отображённые строки (terminalLog) не трогает.
+function startTyping(lines, onDone) {
+  clearTimeout(typingTimer);
+  typingQueue = lines.slice();
+  typingCurrentLine = '';
+  terminalTyping = true;
+
+  const step = () => {
+    if (!typingQueue.length) {
+      terminalTyping = false;
+      renderTerminalScreen();
+      if (onDone) onDone();
+      return;
+    }
+    const line = typingQueue[0];
+    if (typingCurrentLine.length < line.length) {
+      typingCurrentLine = line.slice(0, typingCurrentLine.length + 1);
+      renderTerminalScreen();
+      typingTimer = setTimeout(step, TYPE_MS_PER_CHAR + Math.random() * TYPE_MS_JITTER);
+    } else {
+      terminalLog.push(line);
+      typingQueue.shift();
+      typingCurrentLine = '';
+      renderTerminalScreen();
+      typingTimer = setTimeout(step, TYPE_LINE_PAUSE_MS);
+    }
+  };
+  step();
+}
+
+// Enter во время печати не отправляет новую команду, а мгновенно "доливает" оставшийся текст —
+// как в диалогах многих игр, чтобы не заставлять нетерпеливого игрока ждать анимацию.
+function skipTyping() {
+  clearTimeout(typingTimer);
+  terminalLog.push(...typingQueue);
+  typingQueue = [];
+  typingCurrentLine = '';
+  terminalTyping = false;
+  renderTerminalScreen();
+}
+
+// Кратковременное затемнение света в текущей комнате — "случайный" побочный эффект reboot'а.
+function triggerBlackout() {
+  if (transitionState.active) return; // не мешаем переходу между комнатами
+  fadeEl.classList.add('on');
+  ambientLight.intensity = 0;
+  keyLight.intensity = 0;
+  // Держим экран чёрным подольше (5с) — специально дольше обычного перехода между комнатами,
+  // чтобы на мгновение реально казалось, будто устройство пользователя само перезагрузилось.
+  setTimeout(() => {
+    ambientLight.intensity = 0.65;
+    keyLight.intensity = 1.0;
+    fadeEl.classList.remove('on');
+  }, 5000);
+}
+
+// Синтезируем вой сирены на лету (Web Audio) — звуковых файлов в проекте нет и не нужно.
+let alarmAudioCtx = null;
+function playSirenBeep() {
+  try {
+    alarmAudioCtx = alarmAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = alarmAudioCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    const now = ctx.currentTime;
+    const dur = 2.6;
+    gain.gain.setValueAtTime(0.05, now);
+    for (let t = 0; t < dur; t += 0.6) {
+      osc.frequency.setValueAtTime(520, now + t);
+      osc.frequency.linearRampToValueAtTime(920, now + t + 0.3);
+      osc.frequency.linearRampToValueAtTime(520, now + t + 0.6);
+    }
+    gain.gain.setValueAtTime(0.05, now + dur - 0.15);
+    gain.gain.linearRampToValueAtTime(0, now + dur);
+    osc.start(now);
+    osc.stop(now + dur);
+  } catch (err) { /* автоплей заблокирован браузером или Web Audio недоступен — не критично */ }
+}
+
+let alarmTimeout = null;
+function triggerFireAlarm() {
+  alarmOverlayEl.classList.remove('hidden');
+  playSirenBeep();
+  clearTimeout(alarmTimeout);
+  alarmTimeout = setTimeout(() => alarmOverlayEl.classList.add('hidden'), 4000);
+}
+
+// Каждая команда возвращает массив строк для вывода (обычный текст, без HTML — печатается посимвольно).
+const TERMINAL_COMMANDS = {
+  help: () => [
+    'available commands:',
+    '  help — this list',
+    '  ls — list files',
+    '  whoami — who am I',
+    '  status — repeat network diagnostics',
+    '  ping <host> — check if anyone is out there',
+    '  sudo <anything> — try it if you dare',
+    '  reboot — restart the network',
+  ],
+  ls: () => ['fusebox.log', 'network_map.png', 'passwords.txt.locked', 'do_not_open.exe'],
+  whoami: () => ['penguin_intern (uid=1000, root=false)'],
+  status: () => TERMINAL_LINES.slice(),
+  sudo: () => ['Permission denied: penguins are not in the sudoers file.', 'This incident will be reported.'],
+  ping: (args) => {
+    const target = args[0] || 'the-mothership';
+    return [
+      `PING ${target} (127.0.0.1): 56 data bytes`,
+      `64 bytes from ${target}: icmp_seq=0 ttl=64 time=0.02 ms`,
+      `64 bytes from ${target}: icmp_seq=1 ttl=64 time=4200.00 ms`,
+      `64 bytes from ${target}: icmp_seq=2 ttl=1 time=∞ ms (please consult your local cosmos administrator)`,
+      `64 bytes from ${target}: icmp_seq=3 ttl=0 time=NaN ms`,
+      '',
+      `--- ${target} ping statistics ---`,
+      '4 packets transmitted, 1 packets received, 75% packet loss',
+      'round-trip min/avg/max = 0.02/existential dread/∞ ms',
+    ];
+  },
+  reboot: () => {
+    setTimeout(triggerBlackout, 400);
+    return ['Rebooting main grid...', '...', '[WARN] brownout detected on line 3'];
+  },
+};
+const FIRE_ALARM_ALIASES = ['alarm', 'fire', 'firealarm'];
+
+function runTerminalCommand(raw) {
+  const cmd = raw.trim();
+  // Собственный ввод игрока показываем сразу (он его и так уже "напечатал" в поле) —
+  // печатаем по символам только ОТВЕТ, как будто это "компьютер" набирает его в реальном времени.
+  terminalLog.push('> ' + cmd);
+  renderTerminalScreen();
+  if (!cmd) return;
+
+  const parts = cmd.split(/\s+/);
+  const key = parts[0].toLowerCase();
+  const args = parts.slice(1);
+
+  let output;
+  if (FIRE_ALARM_ALIASES.includes(key)) {
+    triggerFireAlarm();
+    output = ['!!! FIRE ALARM ACTIVATED !!!', '(just a prank. probably.)'];
+  } else if (TERMINAL_COMMANDS[key]) {
+    output = TERMINAL_COMMANDS[key](args);
+  } else {
+    output = [`bash: ${key}: command not found`];
+  }
+  startTyping(output);
+}
+
+terminalInputEl.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  if (terminalTyping) { skipTyping(); return; }
+  if (!terminalInputEl.value.trim()) return;
+  runTerminalCommand(terminalInputEl.value);
+  terminalInputEl.value = '';
+});
+
 function openTerminalPanel() {
   terminalOpen = true;
-  terminalScreenEl.innerHTML = TERMINAL_LINES.join('<br>') + '<br><span class="cursor"></span>';
+  terminalLog = [];
+  terminalInputEl.value = '';
   terminalPanelEl.classList.remove('hidden');
+  startTyping(TERMINAL_LINES.slice());
+  requestAnimationFrame(() => terminalInputEl.focus());
 }
 function closeTerminalPanel() {
   terminalOpen = false;
@@ -203,70 +366,150 @@ function closeTerminalPanel() {
 }
 terminalCloseBtn.onclick = closeTerminalPanel;
 
-// ---------- Головоломка щитка ----------
+// ---------- Головоломка щитка: свободно подключаемые кабели ----------
+// plugSlot[цвет] = индекс гнезда (0..3), куда воткнут кабель этого цвета, или null, если висит свободно.
+// Втыкать можно в любое гнездо в любом порядке — ничего не блокируется и не подсвечивается
+// как "неверно"; решённость проверяется только когда воткнуты все 4 и порядок совпал с targetOrder.
+const plugSlot = { green: null, gray: null, blue: null, orange: null };
+let draggingWireColor = null;
+
 function renderHintRow() {
   puzzleHintRowEl.innerHTML = targetOrder.map((k) => `<span class="dot" style="background:${COLOR_HEX[k]}"></span>`).join('');
 }
 
-function attachPlugDrag(plugEl) {
+function studEl(colorKey) { return wireSourcesEl.children[COLOR_KEYS.indexOf(colorKey)]; }
+function socketElAt(i) { return puzzleSocketsEl.children[i]; }
+function wirePlugEl(colorKey) { return wirePlugsEl.querySelector(`[data-color="${colorKey}"]`); }
+
+// Точка на "доске" (относительно wireBoardEl) — либо низ источника (откуда растёт кабель),
+// либо центр элемента (гнездо/плаг).
+function boardPoint(el, anchorBottom) {
+  const r = el.getBoundingClientRect();
+  const br = wireBoardEl.getBoundingClientRect();
+  const x = r.left + r.width / 2 - br.left;
+  const y = anchorBottom ? r.bottom - br.top : r.top + r.height / 2 - br.top;
+  return { x, y };
+}
+
+// Где должен "лежать" плаг, когда его не тащат: в гнезде, если воткнут, иначе — свободно
+// свисает чуть ниже своего источника.
+function dockPoint(colorKey) {
+  const slot = plugSlot[colorKey];
+  if (slot !== null) return boardPoint(socketElAt(slot), false);
+  const anchor = boardPoint(studEl(colorKey), true);
+  return { x: anchor.x, y: anchor.y + 20 };
+}
+
+function layoutWirePlugs() {
+  COLOR_KEYS.forEach((colorKey) => {
+    if (colorKey === draggingWireColor) return; // позицию ведёт указатель
+    const p = dockPoint(colorKey);
+    const plug = wirePlugEl(colorKey);
+    plug.style.left = p.x + 'px';
+    plug.style.top = p.y + 'px';
+  });
+}
+
+function drawWires() {
+  const br = wireBoardEl.getBoundingClientRect();
+  COLOR_KEYS.forEach((colorKey) => {
+    const start = boardPoint(studEl(colorKey), true);
+    const plug = wirePlugEl(colorKey);
+    const pr = plug.getBoundingClientRect();
+    const end = { x: pr.left + pr.width / 2 - br.left, y: pr.top + pr.height / 2 - br.top };
+    const sag = Math.max(10, Math.hypot(end.x - start.x, end.y - start.y) * 0.22);
+    const mid = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 + sag };
+    wireSvgEl.querySelector(`path[data-color="${colorKey}"]`)
+      .setAttribute('d', `M ${start.x} ${start.y} Q ${mid.x} ${mid.y} ${end.x} ${end.y}`);
+  });
+}
+
+function attachWirePlugDrag(plugEl, colorKey) {
   plugEl.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    const idx = Number(plugEl.dataset.index);
-    const rect = plugEl.getBoundingClientRect();
-    const offsetX = e.clientX - rect.left, offsetY = e.clientY - rect.top;
+    // Координаты считаем ДО добавления .dragging: этот класс переключает position
+    // absolute -> fixed, то есть меняет систему отсчёта у left/top (было "относительно
+    // #wireBoard", стало "относительно вьюпорта"). Если сначала переключить класс,
+    // а потом читать getBoundingClientRect(), элемент успевает визуально "прыгнуть"
+    // в угол экрана — те же пиксельные left/top вдруг означают другую точку.
+    const r = plugEl.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const offsetX = e.clientX - cx, offsetY = e.clientY - cy;
+
+    draggingWireColor = colorKey;
     plugEl.classList.add('dragging');
-    plugEl.style.width = rect.width + 'px';
-    plugEl.style.height = rect.height + 'px';
-    plugEl.style.left = rect.left + 'px';
-    plugEl.style.top = rect.top + 'px';
+    plugEl.style.left = cx + 'px';
+    plugEl.style.top = cy + 'px';
     plugEl.setPointerCapture(e.pointerId);
 
     const onMove = (ev) => {
       plugEl.style.left = (ev.clientX - offsetX) + 'px';
       plugEl.style.top = (ev.clientY - offsetY) + 'px';
+      drawWires();
     };
-    const onUp = (ev) => {
+    // pointerup — нормальное завершение драга; pointercancel — браузер прервал жест
+    // (например, потерял палец/курсор). Без обработки cancel штекер навсегда застревал
+    // в режиме "dragging" и перехватывал клики поверх остальных — из-за этого следующие
+    // кабели переставали ловиться.
+    const finish = (ev) => {
       plugEl.removeEventListener('pointermove', onMove);
+      plugEl.removeEventListener('pointerup', onUp);
+      plugEl.removeEventListener('pointercancel', onCancel);
+      try { plugEl.releasePointerCapture(e.pointerId); } catch (err) { /* уже отпущен браузером — не страшно */ }
       plugEl.classList.remove('dragging');
-      plugEl.style.width = ''; plugEl.style.height = ''; plugEl.style.left = ''; plugEl.style.top = '';
-      const socketEls = [...puzzleSocketsEl.querySelectorAll('.socket')];
-      let dropIdx = idx;
-      for (let i = 0; i < socketEls.length; i++) {
-        const r = socketEls[i].getBoundingClientRect();
-        if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) { dropIdx = i; break; }
+      draggingWireColor = null;
+
+      let dropIdx = null;
+      if (ev) {
+        for (let i = 0; i < 4; i++) {
+          const sr = socketElAt(i).getBoundingClientRect();
+          if (ev.clientX >= sr.left && ev.clientX <= sr.right && ev.clientY >= sr.top && ev.clientY <= sr.bottom) { dropIdx = i; break; }
+        }
       }
-      if (dropIdx !== idx) {
-        const tmp = currentOrder[dropIdx];
-        currentOrder[dropIdx] = currentOrder[idx];
-        currentOrder[idx] = tmp;
-        renderSockets();
-        checkPuzzleSolved();
+      if (dropIdx !== null) {
+        // если в этом гнезде уже что-то есть — выталкиваем прежний кабель обратно на свободный конец
+        const occupant = COLOR_KEYS.find((c) => plugSlot[c] === dropIdx);
+        if (occupant && occupant !== colorKey) plugSlot[occupant] = null;
+        plugSlot[colorKey] = dropIdx;
+      } else {
+        plugSlot[colorKey] = null; // бросили мимо (или жест отменился) — кабель просто отцепился
       }
+      layoutWirePlugs();
+      drawWires();
+      checkPuzzleSolved();
     };
+    const onUp = (ev) => finish(ev);
+    const onCancel = () => finish(null);
     plugEl.addEventListener('pointermove', onMove);
-    plugEl.addEventListener('pointerup', onUp, { once: true });
+    plugEl.addEventListener('pointerup', onUp);
+    plugEl.addEventListener('pointercancel', onCancel);
   });
 }
 
-function renderSockets() {
-  puzzleSocketsEl.innerHTML = '';
-  currentOrder.forEach((colorKey, i) => {
-    const socket = document.createElement('div');
-    socket.className = 'socket';
+function buildWireBoard() {
+  wireSourcesEl.innerHTML = COLOR_KEYS.map((c) => `<div class="wireStud" style="background:${COLOR_HEX[c]}"></div>`).join('');
+  puzzleSocketsEl.innerHTML = '<div class="socket"></div>'.repeat(4);
+  wireSvgEl.innerHTML = COLOR_KEYS.map((c) =>
+    `<path data-color="${c}" fill="none" stroke="${COLOR_HEX[c]}" stroke-width="6" stroke-linecap="round"></path>`
+  ).join('');
+  wirePlugsEl.innerHTML = '';
+  COLOR_KEYS.forEach((colorKey) => {
     const plug = document.createElement('div');
-    plug.className = 'plug';
-    plug.dataset.index = String(i);
+    plug.className = 'wirePlug';
+    plug.dataset.color = colorKey;
     plug.style.background = COLOR_HEX[colorKey];
-    attachPlugDrag(plug);
-    socket.appendChild(plug);
-    puzzleSocketsEl.appendChild(socket);
+    attachWirePlugDrag(plug, colorKey);
+    wirePlugsEl.appendChild(plug);
   });
 }
+
+window.addEventListener('resize', () => { if (puzzleOpen) { layoutWirePlugs(); drawWires(); } });
 
 function checkPuzzleSolved() {
-  const solved = currentOrder.every((c, i) => c === targetOrder[i]);
+  const allPlugged = COLOR_KEYS.every((c) => plugSlot[c] !== null);
+  const solved = allPlugged && targetOrder.every((c, i) => plugSlot[c] === i);
   if (solved) {
-    puzzleMsgEl.textContent = 'Есть контакт!';
+    puzzleMsgEl.textContent = 'Contact!';
     setTimeout(() => { closePuzzle(); onPowerRestored(); }, 700);
   } else {
     puzzleMsgEl.textContent = '';
@@ -277,8 +520,9 @@ function openPuzzle() {
   puzzleOpen = true;
   puzzleMsgEl.textContent = '';
   renderHintRow();
-  renderSockets();
+  buildWireBoard();
   puzzlePanelEl.classList.remove('hidden');
+  requestAnimationFrame(() => { layoutWirePlugs(); drawWires(); });
 }
 
 function closePuzzle() {
@@ -297,19 +541,8 @@ function showStatusMessage(text, seconds) {
 
 function onPowerRestored() {
   powered = true;
-  showStatusMessage('Свет включился!', 2.5);
+  showStatusMessage('Power is on!', 2.5);
 }
-
-// ---------- Окно-тизер (серверная) ----------
-function openWindowView() {
-  windowViewOpen = true;
-  windowViewEl.classList.remove('hidden');
-}
-function closeWindowView() {
-  windowViewOpen = false;
-  windowViewEl.classList.add('hidden');
-}
-windowBackBtn.onclick = closeWindowView;
 
 // ---------- Переход между комнатами (затемнение) ----------
 function startTransition(targetRoom) {
@@ -322,7 +555,7 @@ function startTransition(targetRoom) {
 
 function doRoomSwitch(targetRoom) {
   if (targetRoom === 'server') {
-    player.x = 70; player.z = 90; player.facing = 1;
+    player.x = SERVER_HOTSPOTS.hatchBack.standX; player.z = SERVER_HOTSPOTS.hatchBack.standY; player.facing = -1;
   } else {
     player.x = LOBBY_HOTSPOTS.archway.standX; player.z = LOBBY_HOTSPOTS.archway.standY; player.facing = -1;
   }
@@ -330,8 +563,7 @@ function doRoomSwitch(targetRoom) {
 }
 
 // ---------- Обновление ----------
-const MOVE_SPEED_LOBBY = 850;
-const MOVE_SPEED_SERVER = 150;
+const MOVE_SPEED = 850;
 
 function update(dt) {
   if (transitionState.active) {
@@ -350,6 +582,8 @@ function update(dt) {
 
   if (uiBlocked()) return;
 
+  updateClayThrow(dt);
+
   if (walkTarget) {
     const dx = walkTarget.x - player.x, dz = walkTarget.z - player.z;
     const d = Math.hypot(dx, dz);
@@ -361,8 +595,7 @@ function update(dt) {
       pendingAction = null;
       if (action) action();
     } else {
-      const speed = currentRoom === 'lobby' ? MOVE_SPEED_LOBBY : MOVE_SPEED_SERVER;
-      const step = Math.min(d, speed * dt);
+      const step = Math.min(d, MOVE_SPEED * dt);
       player.x += (dx / d) * step;
       player.z += (dz / d) * step;
       if (Math.abs(dx) > 1) player.facing = dx > 0 ? 1 : -1;
@@ -397,37 +630,25 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color('#171018');
 scene.fog = new THREE.Fog('#171018', 500, 1100);
 
-// Ортографическая камера — без перспективных искажений.
-// В лобби смотрит прямо на фон-картинку и едет по X; в серверной — статично сверху-под-углом.
+// Ортографическая камера — без перспективных искажений. Обе комнаты — плоский фон-арт
+// одного формата (3576x1184), камера смотрит прямо на него и едет по X вслед за игроком.
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 4000);
 
 // Кадр = вся высота фона (ceiling-to-floor, без обрезки и без "cover"-зума).
 // Ширина кадра — производная от соотношения сторон экрана; так как фон широкоформатный (3:1),
 // ширина кадра выходит меньше LOBBY_W, и камера едет по X вслед за игроком (см. syncScene).
-let lobbyCamHalfW = 0;
-let lobbyCamCenterY = LOBBY_H / 2;
-let lobbyCamX = LOBBY_W / 2;
-function setLobbyCameraFrustum() {
+// Общая для обеих комнат — их фон одного размера, поэтому и рамка одна и та же.
+let roomCamHalfW = 0;
+let roomCamCenterY = LOBBY_H / 2;
+let roomCamX = LOBBY_W / 2;
+function setFlatRoomCameraFrustum() {
   const FRUSTUM_H = LOBBY_H;
   const FRUSTUM_W = FRUSTUM_H * ASPECT;
   camera.left = -FRUSTUM_W / 2; camera.right = FRUSTUM_W / 2;
   camera.top = FRUSTUM_H / 2; camera.bottom = -FRUSTUM_H / 2;
   camera.updateProjectionMatrix();
-  lobbyCamHalfW = FRUSTUM_W / 2;
-  lobbyCamCenterY = LOBBY_H / 2;
-}
-
-// Высота кадра серверной подбиралась под портретный экран (375/812) и не должна зависеть
-// от текущей (теперь ландшафтной) ASPECT — иначе комната обваливается по вертикали почти в 5 раз.
-const SERVER_ROOM_REF_ASPECT = 375 / 812;
-function setServerCameraFrustum(w, d) {
-  const FRUSTUM_H = (w + 40) / SERVER_ROOM_REF_ASPECT;
-  const FRUSTUM_W = FRUSTUM_H * ASPECT;
-  camera.left = -FRUSTUM_W / 2; camera.right = FRUSTUM_W / 2;
-  camera.top = FRUSTUM_H / 2; camera.bottom = -FRUSTUM_H / 2;
-  camera.position.set(w / 2, 650, d + 250);
-  camera.lookAt(w / 2, 0, d * 0.4);
-  camera.updateProjectionMatrix();
+  roomCamHalfW = FRUSTUM_W / 2;
+  roomCamCenterY = LOBBY_H / 2;
 }
 
 const ambientLight = new THREE.AmbientLight(0xfff2e0, 0.65);
@@ -444,8 +665,23 @@ const lobbyGroup = new THREE.Group();
 scene.add(lobbyGroup);
 
 const lobbyTexLoader = new THREE.TextureLoader();
-const lobbyBgTex = lobbyTexLoader.load('assets/source/office_lobby_bg_level_1_mvp.png');
+
+// Фон лобби держим не как статичную картинку, а как canvas с этой картинкой внутри —
+// так в него можно потом реально "рисовать" (клякса от комка глины навсегда впечатывается
+// в стену вместо того, чтобы лежать отдельным спрайтом поверх).
+const lobbyBgCanvas = document.createElement('canvas');
+lobbyBgCanvas.width = LOBBY_W;
+lobbyBgCanvas.height = LOBBY_H;
+const lobbyBgCtx = lobbyBgCanvas.getContext('2d');
+const lobbyBgTex = new THREE.CanvasTexture(lobbyBgCanvas);
 lobbyBgTex.colorSpace = THREE.SRGBColorSpace;
+const lobbyBgImg = new Image();
+lobbyBgImg.onload = () => {
+  lobbyBgCtx.drawImage(lobbyBgImg, 0, 0, LOBBY_W, LOBBY_H);
+  lobbyBgTex.needsUpdate = true;
+};
+lobbyBgImg.src = 'assets/source/office_lobby_bg_level_1_mvp.png';
+
 const lobbyBgMesh = new THREE.Mesh(
   new THREE.PlaneGeometry(LOBBY_W, LOBBY_H),
   new THREE.MeshBasicMaterial({ map: lobbyBgTex, fog: false }) // это плоский арт, туман сцены его не должен затемнять
@@ -466,33 +702,41 @@ function makeRectOutline(x0, y0, x1, y1, z, color) {
   return line;
 }
 
-const hotspotProxies = [];
-const hotspotDebugMeshes = [];
-Object.values(LOBBY_HOTSPOTS).forEach((h) => {
-  const [x0, y0, x1, y1] = h.rect;
-  const w = x1 - x0, ht = y1 - y0;
-  const cx = (x0 + x1) / 2, cyImg = (y0 + y1) / 2;
+// Хотспоты: невидимый прямоугольник для рейкаста клика + цветной контур для debug-режима.
+// Общая функция — используется и для лобби, и для серверной (обе устроены одинаково).
+function buildHotspots(group, hotspots) {
+  const proxies = [];
+  const debugMeshes = [];
+  Object.values(hotspots).forEach((h) => {
+    const [x0, y0, x1, y1] = h.rect;
+    const w = x1 - x0, ht = y1 - y0;
+    const cx = (x0 + x1) / 2, cyImg = (y0 + y1) / 2;
 
-  const proxy = new THREE.Mesh(new THREE.PlaneGeometry(w, ht), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 }));
-  proxy.position.set(cx, toWorldY(cyImg), 2);
-  proxy.userData.kind = h.kind;
-  lobbyGroup.add(proxy);
-  hotspotProxies.push(proxy);
+    const proxy = new THREE.Mesh(new THREE.PlaneGeometry(w, ht), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 }));
+    proxy.position.set(cx, toWorldY(cyImg), 2);
+    proxy.userData.kind = h.kind;
+    group.add(proxy);
+    proxies.push(proxy);
 
-  const outline = makeRectOutline(x0, y0, x1, y1, 3, '#36e0ff');
-  lobbyGroup.add(outline);
-  hotspotDebugMeshes.push(outline);
-});
+    const outline = makeRectOutline(x0, y0, x1, y1, 3, '#36e0ff');
+    group.add(outline);
+    debugMeshes.push(outline);
+  });
+  return { proxies, debugMeshes };
+}
 
-const floorDebugLine = (() => {
+function buildFloorDebugLine(group) {
   const y = toWorldY(WALK_LINE_Y);
   const pts = [new THREE.Vector3(WALK_X_MIN, y, 3), new THREE.Vector3(WALK_X_MAX, y, 3)];
   const geo = new THREE.BufferGeometry().setFromPoints(pts);
   const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: '#ff36c9', fog: false }));
   line.visible = false;
-  lobbyGroup.add(line);
+  group.add(line);
   return line;
-})();
+}
+
+const { proxies: hotspotProxies, debugMeshes: hotspotDebugMeshes } = buildHotspots(lobbyGroup, LOBBY_HOTSPOTS);
+const floorDebugLine = buildFloorDebugLine(lobbyGroup);
 
 // индикатор питания у двери (красный/зелёный, поверх фона)
 const doorLampMesh = new THREE.Mesh(new THREE.CircleGeometry(16, 16), new THREE.MeshBasicMaterial({ color: '#e0483f', fog: false }));
@@ -502,140 +746,37 @@ const doorLampMesh = new THREE.Mesh(new THREE.CircleGeometry(16, 16), new THREE.
 }
 lobbyGroup.add(doorLampMesh);
 
+// ---------- Серверная: реальный фон-арт + хотспоты (устроена так же, как лобби) ----------
+const serverGroup = new THREE.Group();
+serverGroup.visible = false;
+scene.add(serverGroup);
+
+const serverBgTex = lobbyTexLoader.load('assets/source/level_1_server_room_v1_25082026.png');
+serverBgTex.colorSpace = THREE.SRGBColorSpace;
+const serverBgMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(LOBBY_W, LOBBY_H),
+  new THREE.MeshBasicMaterial({ map: serverBgTex, fog: false })
+);
+serverBgMesh.position.set(LOBBY_W / 2, LOBBY_H / 2, 0);
+serverGroup.add(serverBgMesh);
+
+const { proxies: serverHotspotProxies, debugMeshes: serverHotspotDebugMeshes } = buildHotspots(serverGroup, SERVER_HOTSPOTS);
+const serverFloorDebugLine = buildFloorDebugLine(serverGroup);
+
+// debug-контуры лежат внутри lobbyGroup/serverGroup — видимость родительской группы
+// (переключается в applyRoomState) сама скрывает контуры неактивной комнаты.
 function setDebugMode(on) {
   debugMode = on;
   debugToggleBtn.classList.toggle('active', on);
   debugReadoutEl.classList.toggle('hidden', !on);
-  floorDebugLine.visible = on && currentRoom === 'lobby';
-  hotspotDebugMeshes.forEach((m) => { m.visible = on && currentRoom === 'lobby'; });
+  floorDebugLine.visible = on;
+  hotspotDebugMeshes.forEach((m) => { m.visible = on; });
+  serverFloorDebugLine.visible = on;
+  serverHotspotDebugMeshes.forEach((m) => { m.visible = on; });
   if (!on) debugReadoutEl.textContent = '';
 }
 debugToggleBtn.onclick = () => setDebugMode(!debugMode);
 setDebugMode(true); // включено по умолчанию, чтобы сразу видеть границы пола/хотспотов
-
-// ---------- Комната: серверная (процедурная 3D-геометрия) ----------
-const plasterTexServer = toTexture(makeNoiseTile(96, 60, 0.3, 2.2, 0.6), 7.5, 6.5);
-const concreteTex = toTexture(makeNoiseTile(64, 55, 0.4, 1.6, 0.7), 7.5, 7.5);
-
-function buildRoomShell(w, d, wallColor, wallBump, floorColor, floorBump) {
-  const group = new THREE.Group();
-  const wallMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(w + 40, 260),
-    new THREE.MeshLambertMaterial({ color: wallColor, bumpMap: wallBump, bumpScale: 1.0 })
-  );
-  wallMesh.position.set(w / 2, 130, 0);
-  group.add(wallMesh);
-
-  const sideWallGeo = new THREE.PlaneGeometry(d + 40, 260);
-  const sideWallMat = new THREE.MeshLambertMaterial({ color: wallColor, bumpMap: wallBump, bumpScale: 1.0 });
-  const leftWall = new THREE.Mesh(sideWallGeo, sideWallMat);
-  leftWall.rotation.y = Math.PI / 2;
-  leftWall.position.set(0, 130, d / 2);
-  group.add(leftWall);
-  const rightWall = new THREE.Mesh(sideWallGeo, sideWallMat.clone());
-  rightWall.rotation.y = -Math.PI / 2;
-  rightWall.position.set(w, 130, d / 2);
-  group.add(rightWall);
-
-  const floorMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(w + 40, d + 60),
-    new THREE.MeshLambertMaterial({ color: floorColor, map: floorBump, bumpMap: floorBump, bumpScale: 0.6 })
-  );
-  floorMesh.rotation.x = -Math.PI / 2;
-  floorMesh.position.set(w / 2, 0, d / 2);
-  group.add(floorMesh);
-
-  return { group, floorMesh };
-}
-
-const serverShell = buildRoomShell(ROOM_BOUNDS.server.w, ROOM_BOUNDS.server.d, '#2c2a36', plasterTexServer, '#33312c', concreteTex);
-const serverGroup = serverShell.group;
-const serverFloor = serverShell.floorMesh;
-serverGroup.visible = false;
-scene.add(serverGroup);
-
-function makeSkylineTile() {
-  const c = document.createElement('canvas');
-  c.width = 160; c.height = 120;
-  const sctx = c.getContext('2d');
-  const grad = sctx.createLinearGradient(0, 0, 0, 120);
-  grad.addColorStop(0, '#2b3a66');
-  grad.addColorStop(0.55, '#6a7cb0');
-  grad.addColorStop(1, '#cfa96a');
-  sctx.fillStyle = grad;
-  sctx.fillRect(0, 0, 160, 120);
-  sctx.fillStyle = '#232538';
-  const buildings = [[8, 55, 20], [34, 78, 28], [70, 40, 18], [94, 62, 24], [124, 34, 22]];
-  buildings.forEach(([x, h, w]) => sctx.fillRect(x, 120 - h, w, h));
-  return c;
-}
-const skylineTex = toTexture(makeSkylineTile());
-
-// лаз обратно в лобби
-const hatchBackGroup = new THREE.Group();
-{
-  const p = serverProps.hatchBack;
-  const frame = new THREE.Mesh(new THREE.BoxGeometry(p.w, p.h, 8), clayMaterial('#4a4438'));
-  frame.position.set(0, p.h / 2, -p.d / 2 + 4);
-  hatchBackGroup.add(frame);
-  for (let i = 0; i < 4; i++) {
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(p.w - 8, 2.5, 2), clayMaterial('#26221c'));
-    bar.position.set(0, 8 + i * (p.h - 16) / 3, -p.d / 2 + 8);
-    hatchBackGroup.add(bar);
-  }
-}
-hatchBackGroup.position.set(serverProps.hatchBack.x, 0, serverProps.hatchBack.z);
-hatchBackGroup.userData.kind = 'hatchBack';
-serverGroup.add(hatchBackGroup);
-
-// щиток питания
-const fuseboxGroup = new THREE.Group();
-let fuseboxIndicator;
-{
-  const p = serverProps.fusebox;
-  const body = new THREE.Mesh(new THREE.BoxGeometry(p.w, p.h, p.d), clayMaterial('#a83f38'));
-  body.position.set(0, p.h / 2, 0);
-  fuseboxGroup.add(body);
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(p.w - 10, p.h - 16, 3), clayMaterial('#8a332e'));
-  plate.position.set(0, p.h / 2, p.d / 2 + 2);
-  fuseboxGroup.add(plate);
-  const warnTri = new THREE.Mesh(new THREE.ConeGeometry(9, 9, 3), new THREE.MeshBasicMaterial({ color: '#e8c93a' }));
-  warnTri.position.set(-p.w / 2 + 14, p.h - 16, p.d / 2 + 4);
-  fuseboxGroup.add(warnTri);
-  fuseboxIndicator = new THREE.Mesh(new THREE.SphereGeometry(4, 10, 8), new THREE.MeshStandardMaterial({ color: '#3a1414', emissive: '#3a0f0f' }));
-  fuseboxIndicator.position.set(p.w / 2 - 12, p.h - 16, p.d / 2 + 5);
-  fuseboxGroup.add(fuseboxIndicator);
-}
-fuseboxGroup.position.set(serverProps.fusebox.x, 0, serverProps.fusebox.z);
-fuseboxGroup.userData.kind = 'fusebox';
-serverGroup.add(fuseboxGroup);
-
-// окно-тизер на дальнюю локацию
-const windowGroup = new THREE.Group();
-{
-  const p = serverProps.window;
-  const frame = new THREE.Mesh(new THREE.BoxGeometry(p.w + 8, p.h + 8, 5), clayMaterial('#5a5448'));
-  frame.position.set(0, p.h / 2, -1);
-  windowGroup.add(frame);
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(p.w, p.h), new THREE.MeshBasicMaterial({ map: skylineTex }));
-  glass.position.set(0, p.h / 2, 1.5);
-  windowGroup.add(glass);
-}
-windowGroup.position.set(serverProps.window.x, 0, serverProps.window.z);
-windowGroup.userData.kind = 'window';
-serverGroup.add(windowGroup);
-
-// светящиеся жилы на стенах серверной (загораются при подаче питания)
-const glowStripMeshes = [];
-[
-  { x: 100, z: 4, len: 140 },
-  { x: 180, z: 4, len: 90 },
-].forEach((cfg) => {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(cfg.len, 4, 2), new THREE.MeshBasicMaterial({ color: '#141820' }));
-  mesh.position.set(cfg.x, 60 + Math.random() * 60, cfg.z);
-  serverGroup.add(mesh);
-  glowStripMeshes.push(mesh);
-});
 
 // ---------- Игрок: спрайт из настоящих пластилиновых стикеров ----------
 const POSES = ['whatdahell', 'hi', 'allgood', 'waaat', 'whatdaheck'];
@@ -658,13 +799,11 @@ for (let i = 1; i <= WALK_FRAME_COUNT; i++) {
 }
 const WALK_FRAME_ASPECT = 485 / 478; // исходное соотношение сторон кадров ходьбы (почти квадрат)
 
-const PLAYER_VISUAL_W = 78, PLAYER_VISUAL_H = 92; // серверная (маленький масштаб комнаты)
-const PLAYER_LOBBY_W = 240, PLAYER_LOBBY_H = 282; // лобби, x1.2 для пропорции с дверьми/мебелью (фиксированный — глубины по Z больше нет)
+// Обе комнаты — один и тот же формат фона (3576x1184), поэтому персонаж везде одного масштаба.
+const PLAYER_LOBBY_W = 384, PLAYER_LOBBY_H = 451; // x1.6 — крупнее относительно текстур окружения
 // кадры ходьбы шире в плечах (расставленные ноги/руки) — держим ту же высоту, что и у стоячей позы, ширину считаем по их родной пропорции
 const PLAYER_WALK_H = PLAYER_LOBBY_H;
 const PLAYER_WALK_W = PLAYER_WALK_H * WALK_FRAME_ASPECT;
-const PLAYER_VISUAL_WALK_H = PLAYER_VISUAL_H;
-const PLAYER_VISUAL_WALK_W = PLAYER_VISUAL_WALK_H * WALK_FRAME_ASPECT;
 const playerMaterial = new THREE.SpriteMaterial({ map: poseTextures.whatdahell, transparent: true, fog: false });
 const playerSprite = new THREE.Sprite(playerMaterial);
 // якорь (0.5, 0) в системе Three.js (Y растёт вверх) = "низ по центру" — то же самое, что (0.5, 1.0)
@@ -738,6 +877,238 @@ function updatePokes(dt) {
   }
 }
 
+// ---------- Комок глины: спрайт-снаряд, прицел-пунктир, клякса, которая впечатывается в стену ----------
+function makeClayTexture() {
+  const c = document.createElement('canvas');
+  c.width = 96; c.height = 96;
+  const cctx = c.getContext('2d');
+  const g = cctx.createRadialGradient(36, 33, 6, 48, 48, 48);
+  g.addColorStop(0, '#b48a63');
+  g.addColorStop(0.65, '#8a6a4a');
+  g.addColorStop(1, '#4a3626');
+  cctx.fillStyle = g;
+  cctx.beginPath();
+  cctx.arc(48, 48, 42, 0, Math.PI * 2);
+  cctx.fill();
+  return c;
+}
+const clayTex = toTexture(makeClayTexture());
+const clayProjectileMaterial = new THREE.SpriteMaterial({ map: clayTex, transparent: true, fog: false });
+const claySprite = new THREE.Sprite(clayProjectileMaterial);
+claySprite.scale.set(90, 90, 1); // x3 — исходный размер было не разглядеть
+claySprite.visible = false;
+lobbyGroup.add(claySprite);
+
+function makeAimDotTexture() {
+  const c = document.createElement('canvas');
+  c.width = 16; c.height = 16;
+  const dctx = c.getContext('2d');
+  const g = dctx.createRadialGradient(8, 8, 0, 8, 8, 8);
+  g.addColorStop(0, 'rgba(255,240,200,0.95)');
+  g.addColorStop(1, 'rgba(255,240,200,0)');
+  dctx.fillStyle = g;
+  dctx.fillRect(0, 0, 16, 16);
+  return c;
+}
+const aimDotTex = toTexture(makeAimDotTexture());
+const AIM_DOT_COUNT = 16;
+const aimDots = [];
+for (let i = 0; i < AIM_DOT_COUNT; i++) {
+  const mat = new THREE.SpriteMaterial({ map: aimDotTex, transparent: true, fog: false, depthWrite: false });
+  const spr = new THREE.Sprite(mat);
+  spr.scale.set(9, 9, 1);
+  spr.visible = false;
+  lobbyGroup.add(spr);
+  aimDots.push(spr);
+}
+
+// Рука, из которой "вылетает" бросок — примерно на уровне груди персонажа.
+function clayHandPosition() {
+  return { x: player.x, y: toWorldY(player.z) + PLAYER_LOBBY_H * 0.55 };
+}
+
+// Простая, всегда предсказуемая дуга броска: обычная линейная интерполяция от старта к цели
+// плюс "горб" по синусоиде — не настоящая баллистика, но выглядит один в один как параболический
+// бросок, и, в отличие от настоящей физики, гарантированно всегда долетает точно до цели.
+function clayArcHeight(fromX, fromY, toX, toY) {
+  return 70 + Math.abs(toX - fromX) * 0.22 + Math.abs(toY - fromY) * 0.15;
+}
+function clayArcPoint(fromX, fromY, toX, toY, t) {
+  const h = clayArcHeight(fromX, fromY, toX, toY);
+  return { x: lerp(fromX, toX, t), y: lerp(fromY, toY, t) + h * 4 * t * (1 - t) };
+}
+
+function updateAimPreview() {
+  if (!aimTarget) { aimDots.forEach((d) => { d.visible = false; }); return; }
+  const from = clayHandPosition();
+  for (let i = 0; i < AIM_DOT_COUNT; i++) {
+    const t = (i + 1) / (AIM_DOT_COUNT + 1);
+    const p = clayArcPoint(from.x, from.y, aimTarget.x, aimTarget.y, t);
+    const dot = aimDots[i];
+    dot.position.set(p.x, p.y, 2.6);
+    dot.material.opacity = 0.9 - t * 0.35;
+    dot.visible = true;
+  }
+}
+function hideAimPreview() {
+  aimTarget = null;
+  aimDots.forEach((d) => { d.visible = false; });
+}
+
+// Клякса впечатывается прямо в canvas-текстуру стены — не отдельный спрайт поверх, а настоящая
+// "деформация" фона: переживает скролл камеры, смену комнат и т.д.
+function paintClaySplat(worldX, worldY) {
+  const imgX = worldX;
+  const imgY = LOBBY_H - worldY; // обратное преобразование к toWorldY
+  const ctx = lobbyBgCtx;
+  ctx.save();
+  ctx.translate(imgX, imgY);
+  ctx.fillStyle = '#7a5a3c';
+  ctx.beginPath();
+  const blobs = 5 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < blobs; i++) {
+    const a = (i / blobs) * Math.PI * 2 + Math.random() * 0.6;
+    const r = 39 + Math.random() * 27; // x3 — под увеличенный комок
+    const dx = Math.cos(a) * 21, dy = Math.sin(a) * 21;
+    ctx.moveTo(dx + r, dy);
+    ctx.arc(dx, dy, r, 0, Math.PI * 2);
+  }
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.07)';
+  ctx.beginPath();
+  ctx.arc(-18, -18, 27, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  lobbyBgTex.needsUpdate = true;
+  startClayDrip(imgX, imgY);
+}
+
+// Через несколько секунд после удара клякса медленно "стекает" вниз по стене — тонкая
+// потёкшая полоска, которая постепенно удлиняется. Тоже рисуется прямо в текстуру.
+function startClayDrip(imgX, imgY) {
+  const dripX = imgX + (Math.random() * 48 - 24);
+  const maxDrip = 108 + Math.random() * 132; // x3 — под увеличенный комок
+  const totalTicks = 16;
+  const stepLen = maxDrip / totalTicks;
+  let tick = 0;
+  let dripLen = 54; // стартуем чуть ниже самой кляксы
+  const iv = setInterval(() => {
+    tick++;
+    const w = Math.max(4.5, 15 - tick * 0.75);
+    lobbyBgCtx.save();
+    lobbyBgCtx.fillStyle = 'rgba(90,66,44,0.5)';
+    lobbyBgCtx.fillRect(dripX - w / 2, imgY + dripLen, w, stepLen + 2);
+    lobbyBgCtx.restore();
+    dripLen += stepLen;
+    lobbyBgTex.needsUpdate = true;
+    if (tick >= totalTicks) clearInterval(iv);
+  }, 240);
+}
+
+function throwClay(targetX, targetY) {
+  const from = clayHandPosition();
+  const dist = Math.hypot(targetX - from.x, targetY - from.y);
+  clayThrow = {
+    fromX: from.x, fromY: from.y, toX: targetX, toY: targetY,
+    t: 0, duration: clamp(dist / 1400, 0.35, 1.0),
+  };
+  claySprite.visible = true;
+}
+
+function updateClayThrow(dt) {
+  if (!clayThrow) return;
+  clayThrow.t += dt / clayThrow.duration;
+  const t = Math.min(1, clayThrow.t);
+  const p = clayArcPoint(clayThrow.fromX, clayThrow.fromY, clayThrow.toX, clayThrow.toY, t);
+  claySprite.position.set(p.x, p.y, 2.6);
+  claySprite.rotation.z += dt * 9; // кувыркается в полёте
+  if (t >= 1) {
+    claySprite.visible = false;
+    paintClaySplat(clayThrow.toX, clayThrow.toY);
+    hasClay = false;
+    clayThrow = null;
+    updateInventoryUI();
+  }
+}
+
+function updateInventoryUI() {
+  inventoryEl.classList.toggle('hidden', !hasClay);
+  clayItemBtn.classList.toggle('active', aimMode);
+}
+
+function setAimMode(on) {
+  aimMode = on;
+  updateInventoryUI();
+  if (on) {
+    hintEl.textContent = 'Drag to aim, release to throw — tap the clay icon again to cancel.';
+  } else {
+    hideAimPreview();
+    hintEl.textContent = walkLabel;
+  }
+}
+
+clayItemBtn.onclick = () => {
+  if (!hasClay) return;
+  if (currentRoom !== 'lobby') {
+    showStatusMessage("Nothing to throw it at here.", 1.5);
+    return;
+  }
+  setAimMode(!aimMode);
+};
+
+function interactCactus() {
+  if (clayTaken) {
+    showStatusMessage("Just a cactus. Ouch.", 1.5);
+    return;
+  }
+  clayTaken = true;
+  hasClay = true;
+  showStatusMessage("Found a lump of clay behind the cactus!", 2.5);
+  updateInventoryUI();
+}
+
+// Отдельная ветка обработки тапа/драга, пока активен режим прицеливания — вместо обычной
+// ходьбы/хотспотов тянем прицел и по отпусканию бросаем комок туда, куда указали.
+function updateAimTargetFromEvent(evt) {
+  const rect = canvas.getBoundingClientRect();
+  const p = evt.touches ? evt.touches[0] : evt;
+  pointerNDC.x = ((p.clientX - rect.left) / rect.width) * 2 - 1;
+  pointerNDC.y = -((p.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointerNDC, camera);
+  const hit = raycaster.intersectObject(lobbyBgMesh)[0];
+  if (!hit) return;
+  aimTarget = {
+    x: clamp(hit.point.x, WALK_X_MIN, WALK_X_MAX),
+    y: clamp(hit.point.y, 150, 1000),
+  };
+  updateAimPreview();
+}
+
+function handleAimPointerDown(evt) {
+  evt.preventDefault();
+  aimDragging = true;
+  updateAimTargetFromEvent(evt);
+  try { canvas.setPointerCapture(evt.pointerId); } catch (err) { /* тач без поддержки capture — не критично */ }
+
+  const onMove = (ev) => { if (aimDragging) updateAimTargetFromEvent(ev); };
+  const finish = (ev) => {
+    canvas.removeEventListener('pointermove', onMove);
+    canvas.removeEventListener('pointerup', onUp);
+    canvas.removeEventListener('pointercancel', onCancel);
+    try { canvas.releasePointerCapture(evt.pointerId); } catch (err) { /* уже отпущен браузером */ }
+    if (!aimDragging) return;
+    aimDragging = false;
+    if (ev) updateAimTargetFromEvent(ev);
+    if (aimTarget) throwClay(aimTarget.x, aimTarget.y);
+    setAimMode(false);
+  };
+  const onUp = (ev) => finish(ev);
+  const onCancel = () => finish(null);
+  canvas.addEventListener('pointermove', onMove);
+  canvas.addEventListener('pointerup', onUp);
+  canvas.addEventListener('pointercancel', onCancel);
+}
+
 // ---------- Комнатное состояние ----------
 let interactiveMeshes = [];
 
@@ -745,35 +1116,20 @@ function applyRoomState(roomKey) {
   currentRoom = roomKey;
   lobbyGroup.visible = roomKey === 'lobby';
   serverGroup.visible = roomKey === 'server';
-  roomLabelEl.textContent = roomKey === 'lobby' ? 'Лобби' : 'Серверная';
+  roomLabelEl.textContent = roomKey === 'lobby' ? 'Lobby' : 'Server Room';
+  interactiveMeshes = roomKey === 'lobby' ? hotspotProxies : serverHotspotProxies;
 
-  if (roomKey === 'lobby') {
-    interactiveMeshes = hotspotProxies;
-    scene.background.set('#171018');
-    scene.fog.color.set('#171018');
-    ambientLight.color.set('#fff2e0');
-    ambientLight.intensity = 0.65;
-    keyLight.color.set('#fff2da');
-    keyLight.intensity = 1.0;
+  scene.background.set('#171018');
+  scene.fog.color.set('#171018');
+  ambientLight.color.set('#fff2e0');
+  ambientLight.intensity = 0.65;
+  keyLight.color.set('#fff2da');
+  keyLight.intensity = 1.0;
 
-    setLobbyCameraFrustum();
-    lobbyCamX = clamp(player.x, lobbyCamHalfW, LOBBY_W - lobbyCamHalfW);
-    camera.position.set(lobbyCamX, lobbyCamCenterY, 900);
-    camera.lookAt(lobbyCamX, lobbyCamCenterY, 0);
-
-    floorDebugLine.visible = debugMode;
-    hotspotDebugMeshes.forEach((m) => { m.visible = debugMode; });
-  } else {
-    interactiveMeshes = [fuseboxGroup, windowGroup, hatchBackGroup];
-    const b = ROOM_BOUNDS.server;
-    setServerCameraFrustum(b.w, b.d);
-    scene.background.set('#05060a');
-    scene.fog.color.set('#05060a');
-    ambientLight.color.set('#1a2030');
-    ambientLight.intensity = lerp(0.12, 0.5, powerProgress);
-    keyLight.color.set('#4060a0');
-    keyLight.intensity = lerp(0.15, 0.6, powerProgress);
-  }
+  setFlatRoomCameraFrustum();
+  roomCamX = clamp(player.x, roomCamHalfW, LOBBY_W - roomCamHalfW);
+  camera.position.set(roomCamX, roomCamCenterY, 900);
+  camera.lookAt(roomCamX, roomCamCenterY, 0);
 }
 
 // ---------- Тап/клик: раскастинг по сцене ----------
@@ -783,8 +1139,7 @@ const pointerNDC = new THREE.Vector2();
 // Клик по дальнему хотспоту — только идём туда, взаимодействие НЕ срабатывает автоматически по приходу.
 // Нужен ещё один клик по тому же предмету, когда персонаж уже рядом — так предмет превращается
 // в осознанное действие, а не в случайное "дошёл и сработало".
-const HOTSPOT_CLOSE_RADIUS_LOBBY = 90;
-const HOTSPOT_CLOSE_RADIUS_SERVER = 36;
+const HOTSPOT_CLOSE_RADIUS = 90;
 function approachOrInteract(standX, standZ, label, action, radius) {
   const dist = Math.hypot(player.x - standX, player.z - standZ);
   if (dist <= radius) {
@@ -799,6 +1154,7 @@ function approachOrInteract(standX, standZ, label, action, radius) {
 }
 
 function onPointerDown(evt) {
+  if (aimMode) { handleAimPointerDown(evt); return; }
   if (uiBlocked()) return;
   evt.preventDefault();
   const rect = canvas.getBoundingClientRect();
@@ -809,7 +1165,8 @@ function onPointerDown(evt) {
 
   // Тап где угодно на экране — сначала пластилиновая "печать" в точке клика (чисто декоративно),
   // сама точка ещё пригодится ниже как X для ходьбы, если клик не попал в хотспот.
-  const bgHit = currentRoom === 'lobby' ? raycaster.intersectObject(lobbyBgMesh)[0] : null;
+  const bgMesh = currentRoom === 'lobby' ? lobbyBgMesh : serverBgMesh;
+  const bgHit = raycaster.intersectObject(bgMesh)[0];
   if (bgHit) spawnPoke(bgHit.point.x, bgHit.point.y);
 
   const hits = raycaster.intersectObjects(interactiveMeshes, true);
@@ -818,84 +1175,67 @@ function onPointerDown(evt) {
     while (obj && !obj.userData.kind) obj = obj.parent;
     if (obj) {
       const kind = obj.userData.kind;
+      const roomHotspots = currentRoom === 'lobby' ? LOBBY_HOTSPOTS : SERVER_HOTSPOTS;
       if (kind === 'door') {
         const h = LOBBY_HOTSPOTS.door;
         approachOrInteract(h.standX, h.standY, h.label,
-          () => { if (powered) finishLevel(); else openDoorHint(); }, HOTSPOT_CLOSE_RADIUS_LOBBY);
+          () => { if (powered) finishLevel(); else openDoorHint(); }, HOTSPOT_CLOSE_RADIUS);
         return;
       }
       if (kind === 'archway') {
         const h = LOBBY_HOTSPOTS.archway;
         approachOrInteract(h.standX, h.standY, h.label,
-          () => startTransition('server'), HOTSPOT_CLOSE_RADIUS_LOBBY);
+          () => startTransition('server'), HOTSPOT_CLOSE_RADIUS);
+        return;
+      }
+      if (kind === 'cactus') {
+        const h = LOBBY_HOTSPOTS.cactus;
+        approachOrInteract(h.standX, h.standY, h.label, () => interactCactus(), HOTSPOT_CLOSE_RADIUS);
         return;
       }
       if (kind === 'networkBoard') {
-        const h = LOBBY_HOTSPOTS.networkBoard;
+        const h = roomHotspots.networkBoard;
         approachOrInteract(h.standX, h.standY, h.label,
-          () => openNetworkPanel(), HOTSPOT_CLOSE_RADIUS_LOBBY);
+          () => openNetworkPanel(), HOTSPOT_CLOSE_RADIUS);
         return;
       }
       if (kind === 'terminal') {
-        const h = LOBBY_HOTSPOTS.terminal;
+        const h = roomHotspots.terminal;
         approachOrInteract(h.standX, h.standY, h.label,
-          () => openTerminalPanel(), HOTSPOT_CLOSE_RADIUS_LOBBY);
+          () => openTerminalPanel(), HOTSPOT_CLOSE_RADIUS);
         return;
       }
       if (kind === 'fusebox') {
-        const sp = serverProps.fusebox;
-        approachOrInteract(sp.x, sp.z + sp.d / 2 + 24, 'Щиток питания',
-          () => openPuzzle(), HOTSPOT_CLOSE_RADIUS_SERVER);
-        return;
-      }
-      if (kind === 'window') {
-        const sp = serverProps.window;
-        approachOrInteract(sp.x, sp.z + 26, 'Окно',
-          () => openWindowView(), HOTSPOT_CLOSE_RADIUS_SERVER);
+        const h = SERVER_HOTSPOTS.fusebox;
+        approachOrInteract(h.standX, h.standY, h.label,
+          () => openPuzzle(), HOTSPOT_CLOSE_RADIUS);
         return;
       }
       if (kind === 'hatchBack') {
-        const sp = serverProps.hatchBack;
-        approachOrInteract(sp.x, sp.z + sp.d / 2 + 20, 'Назад в лобби',
-          () => startTransition('lobby'), HOTSPOT_CLOSE_RADIUS_SERVER);
+        const h = SERVER_HOTSPOTS.hatchBack;
+        approachOrInteract(h.standX, h.standY, h.label,
+          () => startTransition('lobby'), HOTSPOT_CLOSE_RADIUS);
         return;
       }
     }
   }
 
-  if (currentRoom === 'lobby') {
-    // Как в NeverHood: клик где угодно на экране (хоть в потолок) — берём только X
-    // и идём туда по фиксированной линии пола. Никакого отказа/кламп-логики по Y.
-    if (bgHit) {
-      const imgX = clamp(bgHit.point.x, WALK_X_MIN, WALK_X_MAX);
-      walkTarget = { x: imgX, z: WALK_LINE_Y };
-      walkLabel = '';
-      pendingAction = null;
-      if (debugMode) {
-        debugReadoutEl.textContent = `тап: x=${Math.round(bgHit.point.x)} → идём к (${Math.round(imgX)}, ${WALK_LINE_Y})`;
-      }
-    }
-    return;
-  }
-
-  const floorHit = raycaster.intersectObject(serverFloor)[0];
-  if (floorHit) {
-    const b = ROOM_BOUNDS.server;
-    walkTarget = { x: clamp(floorHit.point.x, 12, b.w - 12), z: clamp(floorHit.point.z, 12, b.d - 12) };
+  // Как в NeverHood: клик где угодно на экране (хоть в потолок) — берём только X
+  // и идём туда по фиксированной линии пола. Никакого отказа/кламп-логики по Y.
+  // Одинаково для обеих комнат — у них общий формат фона и общая линия пола.
+  if (bgHit) {
+    const imgX = clamp(bgHit.point.x, WALK_X_MIN, WALK_X_MAX);
+    walkTarget = { x: imgX, z: WALK_LINE_Y };
     walkLabel = '';
     pendingAction = null;
+    if (debugMode) {
+      debugReadoutEl.textContent = `tap: x=${Math.round(bgHit.point.x)} -> walking to (${Math.round(imgX)}, ${WALK_LINE_Y})`;
+    }
   }
 }
 canvas.addEventListener('pointerdown', onPointerDown);
 
 // ---------- Синхронизация сцены с игровым состоянием ----------
-const _cMix = new THREE.Color();
-function mixColorInto(target, hexA, hexB, t) {
-  target.set(hexA);
-  _cMix.set(hexB);
-  target.lerp(_cMix, t);
-}
-
 let walkBobPhase = 0;
 let walkFrameTimer = 0;
 
@@ -903,37 +1243,28 @@ function syncScene(dt) {
   updatePokes(dt);
 
   const isWalking = !!walkTarget;
+  const feetY = toWorldY(player.z);
 
-  if (currentRoom === 'lobby') {
-    const feetY = toWorldY(player.z);
+  // лёгкий подпрыг поверх покадровых ног — усиливает ощущение шага, не конфликтует с ним
+  if (isWalking) walkBobPhase += dt * 11; else walkBobPhase = 0;
+  const bob = isWalking ? Math.abs(Math.sin(walkBobPhase)) * 4 : 0;
 
-    // лёгкий подпрыг поверх покадровых ног — усиливает ощущение шага, не конфликтует с ним
-    if (isWalking) walkBobPhase += dt * 11; else walkBobPhase = 0;
-    const bob = isWalking ? Math.abs(Math.sin(walkBobPhase)) * 4 : 0;
+  playerSprite.position.set(player.x, feetY + bob, 2);
+  const pw = isWalking ? PLAYER_WALK_W : PLAYER_LOBBY_W;
+  const ph = isWalking ? PLAYER_WALK_H : PLAYER_LOBBY_H;
+  playerSprite.scale.set(player.facing * pw, ph, 1);
 
-    playerSprite.position.set(player.x, feetY + bob, 2);
-    const pw = isWalking ? PLAYER_WALK_W : PLAYER_LOBBY_W;
-    const ph = isWalking ? PLAYER_WALK_H : PLAYER_LOBBY_H;
-    playerSprite.scale.set(player.facing * pw, ph, 1);
+  shadowSprite.visible = true;
+  shadowSprite.position.set(player.x, feetY, 1.5); // чуть впереди фона, но позади персонажа
+  const shadowSquash = 1 - bob / 45; // тень слегка сжимается, когда нога "в воздухе"
+  shadowSprite.scale.set(95 * shadowSquash, 32 * shadowSquash, 1);
 
-    shadowSprite.visible = true;
-    shadowSprite.position.set(player.x, feetY, 1.5); // чуть впереди фона, но позади персонажа
-    const shadowSquash = 1 - bob / 45; // тень слегка сжимается, когда нога "в воздухе"
-    shadowSprite.scale.set(95 * shadowSquash, 32 * shadowSquash, 1);
+  const targetCamX = clamp(player.x, roomCamHalfW, LOBBY_W - roomCamHalfW);
+  roomCamX = lerp(roomCamX, targetCamX, Math.min(1, dt * 5));
+  camera.position.x = roomCamX;
+  camera.lookAt(roomCamX, roomCamCenterY, 0);
 
-    const targetCamX = clamp(player.x, lobbyCamHalfW, LOBBY_W - lobbyCamHalfW);
-    lobbyCamX = lerp(lobbyCamX, targetCamX, Math.min(1, dt * 5));
-    camera.position.x = lobbyCamX;
-    camera.lookAt(lobbyCamX, lobbyCamCenterY, 0);
-
-    doorLampMesh.material.color.set(powered ? '#4fdc6a' : '#e0483f');
-  } else {
-    shadowSprite.visible = false;
-    playerSprite.position.set(player.x, 0, player.z);
-    const pw = isWalking ? PLAYER_VISUAL_WALK_W : PLAYER_VISUAL_W;
-    const ph = isWalking ? PLAYER_VISUAL_WALK_H : PLAYER_VISUAL_H;
-    playerSprite.scale.set(player.facing * pw, ph, 1);
-  }
+  doorLampMesh.material.color.set(powered ? '#4fdc6a' : '#e0483f');
 
   const pose = currentPoseName();
   if (pose === 'walking') {
@@ -944,18 +1275,6 @@ function syncScene(dt) {
   } else {
     walkFrameTimer = 0;
     if (playerMaterial.map !== poseTextures[pose]) playerMaterial.map = poseTextures[pose];
-  }
-
-  if (currentRoom === 'server') {
-    if (powered && powerProgress < 1) powerProgress = Math.min(1, powerProgress + dt / 0.8);
-    const pulse = powerProgress > 0.99 ? 0.88 + 0.12 * Math.sin(performance.now() / 260) : 1;
-    ambientLight.intensity = lerp(0.12, 0.5, powerProgress) * pulse;
-    keyLight.intensity = lerp(0.15, 0.6, powerProgress) * pulse;
-    glowStripMeshes.forEach((m) => mixColorInto(m.material.color, '#141820', '#5be9ff', powerProgress * pulse));
-    if (fuseboxIndicator) {
-      mixColorInto(fuseboxIndicator.material.color, '#3a1414', '#3fe06a', powerProgress);
-      mixColorInto(fuseboxIndicator.material.emissive, '#3a0f0f', '#1f8a3f', powerProgress);
-    }
   }
 }
 
