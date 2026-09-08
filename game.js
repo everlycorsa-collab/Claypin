@@ -779,7 +779,7 @@ debugToggleBtn.onclick = () => setDebugMode(!debugMode);
 setDebugMode(true); // включено по умолчанию, чтобы сразу видеть границы пола/хотспотов
 
 // ---------- Игрок: спрайт из настоящих пластилиновых стикеров ----------
-const POSES = ['whatdahell', 'hi', 'allgood', 'waaat', 'whatdaheck'];
+const POSES = ['whatdahell', 'hi', 'allgood', 'waaat', 'whatdaheck', 'ClayPin_Main_View'];
 const poseTextures = {};
 const texLoader = new THREE.TextureLoader();
 POSES.forEach((name) => {
@@ -804,7 +804,7 @@ const PLAYER_LOBBY_W = 384, PLAYER_LOBBY_H = 451; // x1.6 — крупнее о�
 // кадры ходьбы шире в плечах (расставленные ноги/руки) — держим ту же высоту, что и у стоячей позы, ширину считаем по их родной пропорции
 const PLAYER_WALK_H = PLAYER_LOBBY_H;
 const PLAYER_WALK_W = PLAYER_WALK_H * WALK_FRAME_ASPECT;
-const playerMaterial = new THREE.SpriteMaterial({ map: poseTextures.whatdahell, transparent: true, fog: false });
+const playerMaterial = new THREE.SpriteMaterial({ map: poseTextures.ClayPin_Main_View, transparent: true, fog: false });
 const playerSprite = new THREE.Sprite(playerMaterial);
 // якорь (0.5, 0) в системе Three.js (Y растёт вверх) = "низ по центру" — то же самое, что (0.5, 1.0)
 // в экранных координатах (Y растёт вниз). Ноги/тень стоят ровно на этой точке.
@@ -834,7 +834,7 @@ scene.add(shadowSprite);
 function currentPoseName() {
   if (uiBlocked()) return 'allgood';
   if (walkTarget) return 'walking';
-  return 'whatdahell';
+  return 'ClayPin_Main_View';
 }
 
 // маленькая пластилиновая "печать" в месте тапа — быстрый squish-ripple, чисто декоративно
